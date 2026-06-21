@@ -162,7 +162,7 @@ go run cmd/api/main.go
 ```
 
 ## Project Structure
-
+```
 ├── cmd/
 │   └── api/                  # Application entry point
 ├── internal/
@@ -175,3 +175,4 @@ go run cmd/api/main.go
 │   └── firebase-service-account.json # Git-ignored service keys
 ├── Go.mod
 └── README.md
+```
