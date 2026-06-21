@@ -1,0 +1,39 @@
+# Env Files (Contains your database credentials, tokens, and ports)
+.env
+.env.local
+.env.*.local
+
+# Planning and Design Artifacts
+IMPLEMENTATION_PLAN.md
+
+
+# Firebase Service Accounts (CRITICAL: Never leak your Google private keys)
+configs/*.json
+*.secret.json
+*.credentials.json
+
+# Logs and test outputs
+*.log
+*.out
+*.test
+*.prof
+
+# Go Build Artifacts & Binaries
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+iot_backend
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code IDE Directory
+.vscode/
+!.vscode/launch.json
+!.vscode/settings.json
