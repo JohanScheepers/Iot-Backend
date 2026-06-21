@@ -2,23 +2,25 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"strings"
-	"time"
 
 	"iot_backend/internal/auth"
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"iot_backend/internal/repository"
 )
 
-type TelemetryPoint struct {
-	Timestamp time.Time `json:"timestamp"`
-	Value     float64   `json:"value"`
+type TelemetryHandler struct {
+	TelemetryRepo *repository.TelemetryRepo
+	DeviceRepo    *repository.DeviceRepo
+	UserRepo      *repository.UserRepo
 }
 
-type TelemetryHandler struct {
-	Influx influxdb2.Client
+func NewTelemetryHandler(tRepo *repository.TelemetryRepo, dRepo *repository.DeviceRepo, uRepo *repository.UserRepo) *TelemetryHandler {
+	return &TelemetryHandler{
+		TelemetryRepo: tRepo,
+		DeviceRepo:    dRepo,
+		UserRepo:      uRepo,
+	}
 }
 
 func (h *TelemetryHandler) GetDeviceHistory(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +32,6 @@ func (h *TelemetryHandler) GetDeviceHistory(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Unauthorized Context", http.StatusUnauthorized)
 		return
 	}
-	_ = uid // Use this to check device ownership in your MySQL DB later
 
 	// Simple URL parsing /api/v1/devices/{id}/history
 	pathParts := strings.Split(r.URL.Path, "/")
@@ -49,34 +50,41 @@ func (h *TelemetryHandler) GetDeviceHistory(w http.ResponseWriter, r *http.Reque
 	if timeRange == "" { timeRange = "7d" }
 	if windowPeriod == "" { windowPeriod = "1h" }
 
-	bucket := os.Getenv("INFLUX_BUCKET")
-	org := os.Getenv("INFLUX_ORG")
+	// Validate query parameters to prevent injection or invalid values
+	if err := ValidateHistoryParams(metric, timeRange, windowPeriod); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	queryAPI := h.Influx.QueryAPI(org)
-	fluxQuery := fmt.Sprintf(`
-		from(bucket: "%s")
-			|> range(start: -%s)
-			|> filter(fn: (r) => r["_measurement"] == "sensor_telemetry")
-			|> filter(fn: (r) => r["device_id"] == "%s")
-			|> filter(fn: (r) => r["_field"] == "%s")
-			|> aggregateWindow(every: %s, fn: mean, createEmpty: false)
-			|> yield(name: "mean")`, bucket, timeRange, deviceID, metric, windowPeriod)
+	// 1. Get internal user details from Firebase UID
+	user, err := h.UserRepo.GetByFirebaseUID(ctx, uid)
+	if err != nil {
+		http.Error(w, "Forbidden: User record not found", http.StatusForbidden)
+		return
+	}
 
-	result, err := queryAPI.Query(ctx, fluxQuery)
+	// 2. Verify device ownership
+	owned, err := h.DeviceRepo.IsOwnedBy(ctx, user.ID, deviceID)
+	if err != nil {
+		http.Error(w, "Database error checking device ownership", http.StatusInternalServerError)
+		return
+	}
+	if !owned {
+		http.Error(w, "Forbidden: User does not own this device", http.StatusForbidden)
+		return
+	}
+
+	params := repository.HistoryParams{
+		DeviceID: deviceID,
+		Metric:   metric,
+		Range:    timeRange,
+		Window:   windowPeriod,
+	}
+
+	data, err := h.TelemetryRepo.QueryHistory(ctx, params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	defer result.Close()
-
-	var data []TelemetryPoint
-	for result.Next() {
-		val, ok := result.Record().Value().(float64)
-		if !ok { continue }
-		data = append(data, TelemetryPoint{
-			Timestamp: result.Record().Time(),
-			Value:     val,
-		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

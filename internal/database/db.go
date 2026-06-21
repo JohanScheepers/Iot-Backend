@@ -3,10 +3,10 @@ package database
 import (
 	"database/sql"
 	"log"
-	"os"
 
 	_ "github.com/go-sql-driver/mysql"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"iot_backend/internal/config"
 )
 
 type DBHub struct {
@@ -14,10 +14,9 @@ type DBHub struct {
 	Influx influxdb2.Client
 }
 
-func InitDBs() *DBHub {
+func InitDBs(cfg *config.Config) *DBHub {
 	// 1. Init MySQL
-	mysqlDSN := os.Getenv("MYSQL_DSN")
-	sqlDB, err := sql.Open("mysql", mysqlDSN)
+	sqlDB, err := sql.Open("mysql", cfg.MySQLDSN)
 	if err != nil {
 		log.Fatalf("Error opening MySQL connection: %v", err)
 	}
@@ -26,9 +25,7 @@ func InitDBs() *DBHub {
 	}
 
 	// 2. Init InfluxDB
-	influxURL := os.Getenv("INFLUX_URL")
-	influxToken := os.Getenv("INFLUX_TOKEN")
-	influxClient := influxdb2.NewClient(influxURL, influxToken)
+	influxClient := influxdb2.NewClient(cfg.InfluxURL, cfg.InfluxToken)
 
 	log.Println("⚡ Successfully connected to MySQL and InfluxDB")
 
